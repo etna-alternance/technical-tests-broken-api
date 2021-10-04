@@ -1,0 +1,7 @@
+pymysql==1.0.2
+cryptography==3.4.8
+fastapi==0.68.1
+pychu==1.0.1
+pydantic>=1.8.2,==1.*
+SQLAlchemy==1.4.23
+uvicorn[standard]==0.15.0
