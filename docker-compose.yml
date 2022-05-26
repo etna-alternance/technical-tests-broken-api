@@ -19,7 +19,8 @@ services:
       BROKEN_API_PORT: 8000
 
   mysql:
-    image: mysql:8.0
+    image: arm64v8/mysql:oracle
+    hostname: db
     environment:
       MYSQL_USER: mysql_user
       MYSQL_PASSWORD: mysql_password
