@@ -1,0 +1,71 @@
+Etape 1 : J'ai commencé par exécuter le docker-compose up --build -d , celle qui se trouve dans le readme.txt
+
+Etape 2 : Apparement, la commande ne s'exécuterait pas comme il faut. GCC serait notamment manquant. Je lis : error: command 'gcc' failed: No such file or directory
+Cela suppose donc qu'il faille installer GCC dans un des conteneurs docker. Le conteneur incriminé serait le conteneur de broken-api. Il faut donc modifier le Dockerfile
+qui se trouve dans le dossier test. Pour cela , j'ai ajouté les lignes : 
+RUN apt-get update
+RUN apt-get -y install gcc
+
+Etape 3 : Je relance la commande docker-compose up --build -d mais l'image docker mysql n'est pas créer. J'ai une erreur
+ERROR: no matching manifest for linux/arm64/v8 in the manifest list entries
+Après des recherches sur Google , cela vient du fait que je possède un Mac M1 qui tourne sur arm64. Je dois donc changer le docker-compose pour
+Prendre la bonne image docker de mysql
+
+Etape 4 : Après avoir relancé le docker-compose up --build -d , la commande a l'air de bien s'exécuter. Avec le plugin Docker sur Vs Code, je vois bien 3 containers docker
+Qui tournent. Je lance donc le test avec docker-compose exec -T tests python3 -m pytest .
+J'observe en sortie de console que 4 tests échouent. On observe notamment des erreurs 500, ce qui est le code HTTP qui signifie une erreur côté serveur. Il faut inspecter le serveur
+Broken API
+
+Etape 5 : Grâce à VS Code je peux voir les messages dans les containers avec View Logs. On view log avec VS CODE ce qui permet d'observer le terminal qui tourne dans ce conteneur.
+Le problème viens de la liaison entre le broken API et le MySQL :
+        
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, "Can't connect to MySQL server on 'db' ([Errno -2] Name or service not known)")
+
+Je suis donc allé dans le fichier docker-compose.yml ( car c'est ce fichier qui s'occupe de faire les liaison entre les containers et de gérer les ports et hostname),
+On rajoute hostname: db afin que le Broken API puisse se connecter au conteneur, puis on relance le docker compose et il reste deux tests en erreur.
+
+Etape 6 : On peut voir à quel ligne on a des erreurs dans le test :
+Dans le fichier test_product.py, on regarde la fonction test_list_product_cheaper_than , tout va bien jusqu'a arriver à :  assert len(json) == 3
+E       assert 0 == 3
+E      +  where 0 = len([]) 
+Le test devrait rendre 3 produits mais n'en rend que zero et avec l'analyse du fichier on se rend compte que le problème vient du serveur.
+En effet, car dans la boucle for, on est sur que le POST s'est bien passé car le assert 201 passe.
+
+Etape 7 : On sait que l'erreur se produit lors du GET /products donc je me suis concentré sur cette fonction dans le main.py du broken api. 
+Je voulais m'assurer que chaque ligne de code est bonne. J'ai fais des print de beaucoup de variables comme cheaper_than, type ou stmt
+Puis je regarde avec le View Log les print dans le conteneur.
+
+Et le print du stmt m'a attiré l'attention :
+SELECT product.id, product.name, product.type, product.price FROM product WHERE false
+Le problème viens du WHERE false, il devrait rendre la condition du prix inférieur à 30.
+
+Etape 8 : Le soucis vient donc dans ce qu'il y a à l'intérieur du build_conditions
+On observe que la liste condition possède un False. Or si on fait une opération AND avec un False. On aura toujours FALSE en retour. J'ai donc supprimé le False initiale dans le conditions
+Enfin on oublie pas d'appliquer le strictement inférieur en remplaçant <= par < car on veut cheaper.
+En effet, en relançant le test sans remplacer le <= j'ai eu 5 éléments au lieu de 3
+
+Etape 9 : J'ai relancer une dernière fois le test, tout les testes passent
+
+
+Les difficultés rencontrées :
+
+- J'ai mis beaucoup de temps à trier l'information, notamment les messages d'erreur en sortie des tests. Je reconnaissais des morceaux de code Python. 
+
+- Mon premier gros blocage arrive au moment où je lance les tests pour la première fois et que j'ai eu les erreurs 500.
+J'étais complètement bloquée pour savoir où commencer à chercher les erreurs.
+Je ne connaissais pas le plugin Docker pour VS Code.  Une connaissance m'a conseillé d'installer ce plugin sur VS Code pour que ca m'aide à lire les messages dans les container docker avec le View Logs
+C'est la que j'ai vu le soucis du  "Can't connect to MySQL server on 'db' ([Errno -2] Name or service not known)". J'ai eu un point de départ où chercher la solution
+
+- A la suite de ce message d'erreur J'ai mis beaucoup de temps à trouver la solution pour l'étape avec le hostname : db.
+J'avais encore des lacunes sur Docker. En général je copiais le message d'erreur sur la console et je le collais
+dans Google pour essayer des solutions. J'ai du reprendre de 0 les cours sur docker et docker-compose car je connaissais encore mal le concept de container.
+Au final avec des recherches j'ai vu le lien entre hostname et le fait que mysql n'était pas joignable
+
+- Au début je ne savais pas que c'était les assert qui déclenchaient les erreurs. J'ai regardé sur Google ce que faisait assert. J'ai compris son utilité : Si la condition dans l'assert n'est
+Pas respecté , ca crée une erreur
+
+- L'idée de print les variables dans le get /products dans le broken API ne m'est pas venu instantanément. J'ai supprimé ou ajouter du code à tester plusieurs fois.
+Je ne suis toujours pas encore à l'aise avec toute la syntaxe Python dans ce programme.
+
+Autres notes : 
+- J'ai eu récemment des cours sur les API Rest à l'ETNA , cela m'a pas mal aidé pour comprendre ce que fait requests sur Python

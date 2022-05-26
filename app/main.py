@@ -48,11 +48,11 @@ def delete_product(id: int) -> None:
 
 
 def build_conditions(type: Optional[ProductType], cheaper_than: Optional[int] = None):
-    conditions = [False]
+    conditions = []
     if type is not None:
         conditions.append(ProductSchema.type == type)
     if cheaper_than is not None:
-        conditions.append(ProductSchema.price <= cheaper_than)
+        conditions.append(ProductSchema.price < cheaper_than)
     return conditions
 
 
@@ -63,6 +63,7 @@ def list_products(type: Optional[ProductType] = None, cheaper_than: Optional[int
             stmt = select(ProductSchema)
         else:
             stmt = select(ProductSchema).where(and_(*build_conditions(type, cheaper_than)))
+        print(stmt)
         ps = session.execute(stmt).scalars().all()
         return [Product(id=p.id, name=p.name, type=p.type, price=p.price) for p in ps]
 
